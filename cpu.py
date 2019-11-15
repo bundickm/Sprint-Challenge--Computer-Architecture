@@ -7,6 +7,9 @@ IM = 5  # R5 = interrupt mask (IM)
 IS = 6  # R6 = interrupt status (IS)
 SP = 7  # R7 = stack pointer (SP)
 
+FL_EQ = 0b001
+FL_GT = 0b010
+FL_LT = 0b100
 
 class CPU:
     """Main CPU class."""
@@ -35,6 +38,10 @@ class CPU:
             0b10000100: 'STOR',
             0b01010000: 'CALL',
             0b00010001: 'RET',
+            0b10100111: 'CMP',
+            0b01010100: 'JMP',
+            0b01010101: 'JEQ',
+            0b01010110: 'JNE',
         }
 
     def load(self, filename):
@@ -66,6 +73,14 @@ class CPU:
             self.registers[reg_a] *= self.registers[reg_b]
         elif op == 'DIV':
             self.registers[reg_a] //= self.registers[reg_b]
+        elif op == 'CMP':
+            self.fl &= 0x11111000  # Clear flags
+            if self.registers[reg_a] < self.registers[reg_b]:
+                self.fl |= FL_LT
+            elif self.registers[reg_a] > self.registers[reg_b]:
+                self.fl |= FL_GT
+            else:
+                self.fl |= FL_EQ
         else:
             raise Exception("Unsupported ALU operation")
 
@@ -129,6 +144,21 @@ class CPU:
         self.pc = val
         self.registers[SP] += 1
 
+    def op_jmp(self, r1):
+        self.pc = self.registers[r1]
+
+    def op_jeq(self, r1):
+        if self.fl & FL_EQ:
+            self.pc = self.registers[r1]
+        else:
+            self.pc += 2
+
+    def op_jne(self, r1):
+        if not self.fl & FL_EQ:
+            self.pc = self.registers[r1]
+        else:
+            self.pc += 2
+
     def run(self):
         while not self.halted:
             self.ir = self.ram[self.pc]
@@ -140,16 +170,22 @@ class CPU:
                 self.op_ldi(r1, r2)
             elif op == 'PRN': # Print
                 self.op_prn(r1)
-            elif op in ['ADD', 'MUL', 'SUB', 'DIV']: # Math
+            elif op in ['ADD', 'MUL', 'SUB', 'DIV', 'CMP']: # Math
                 self.op_alu(op, r1, r2)
             elif op == 'PUSH': # Write to Stack
                 self.op_push(r1)
             elif op == 'POP': # Pull from Stack
                 self.op_pop(r1)
-            elif op == 'CALL':
+            elif op == 'CALL': # Call subroutine
                 self.op_call(r1)
-            elif op == 'RET':
+            elif op == 'RET':   # Return from subroutine
                 self.op_ret()
+            elif op == 'JMP': # Jump
+                self.op_jmp(r1)
+            elif op == 'JEQ': # Jump if equal
+                self.op_jeq(r1)
+            elif op == 'JNE': # Jump if not equal
+                self.op_jne(r1)
             elif op == 'HLT': # Exit
                 self.halted = True
             else:
